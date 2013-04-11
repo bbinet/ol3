@@ -29,6 +29,7 @@ goog.require('goog.style');
 goog.require('goog.vec.Mat4');
 goog.require('ol.BrowserFeature');
 goog.require('ol.Collection');
+goog.require('ol.CollectionEventType');
 goog.require('ol.Color');
 goog.require('ol.Extent');
 goog.require('ol.FrameState');
@@ -198,6 +199,12 @@ ol.Map = function(options) {
 
   /**
    * @private
+   * @type {?number}
+   */
+  this.layersPropertyListenerKey_ = null;
+
+  /**
+   * @private
    * @type {Element}
    */
   this.viewport_ = goog.dom.createDom(goog.dom.TagName.DIV, 'ol-viewport');
@@ -295,6 +302,9 @@ ol.Map = function(options) {
       goog.bind(this.getTilePriority, this),
       goog.bind(this.handleTileChange_, this));
 
+  goog.events.listen(this,
+      ol.Object.getChangedEventType(ol.MapProperty.LAYERS),
+      this.handleLayersChanged_, false, this);
   goog.events.listen(this, ol.Object.getChangedEventType(ol.MapProperty.VIEW),
       this.handleViewChanged_, false, this);
   goog.events.listen(this, ol.Object.getChangedEventType(ol.MapProperty.SIZE),
@@ -655,6 +665,14 @@ ol.Map.prototype.handleViewPropertyChanged_ = function() {
 /**
  * @private
  */
+ol.Map.prototype.handleLayersPropertyChanged_ = function() {
+  this.render();
+};
+
+
+/**
+ * @private
+ */
 ol.Map.prototype.handleViewChanged_ = function() {
   if (!goog.isNull(this.viewPropertyListenerKey_)) {
     goog.events.unlistenByKey(this.viewPropertyListenerKey_);
@@ -665,6 +683,24 @@ ol.Map.prototype.handleViewChanged_ = function() {
     this.viewPropertyListenerKey_ = goog.events.listen(
         view, ol.ObjectEventType.CHANGED,
         this.handleViewPropertyChanged_, false, this);
+  }
+  this.render();
+};
+
+
+/**
+ * @private
+ */
+ol.Map.prototype.handleLayersChanged_ = function() {
+  if (!goog.isNull(this.layersPropertyListenerKey_)) {
+    goog.events.unlistenByKey(this.layersPropertyListenerKey_);
+    this.layersPropertyListenerKey_ = null;
+  }
+  var layers = this.getLayers();
+  if (goog.isDefAndNotNull(layers)) {
+    this.layersPropertyListenerKey_ = goog.events.listen(
+        layers, [ol.CollectionEventType.ADD, ol.CollectionEventType.REMOVE],
+        this.handleLayersPropertyChanged_, false, this);
   }
   this.render();
 };

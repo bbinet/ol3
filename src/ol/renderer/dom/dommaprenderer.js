@@ -76,6 +76,8 @@ ol.renderer.dom.Map.prototype.renderFrame = function(frameState) {
     return;
   }
 
+  this.updateLayersRenderers(frameState.layersArray);
+
   goog.array.forEach(frameState.layersArray, function(layer) {
     var layerState = frameState.layerStates[goog.getUid(layer)];
     if (!layerState.ready) {
