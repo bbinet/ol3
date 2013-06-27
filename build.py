@@ -405,7 +405,6 @@ def _strip_comments(lines):
         EXAMPLES_SRC, SHADER_SRC, SPEC)
 def build_check_requires_timestamp(t):
     from zipfile import ZipFile
-    unused_count = 0
     all_provides = set()
     zf = ZipFile(PLOVR_JAR)
     for zi in zf.infolist():
@@ -421,33 +420,16 @@ def build_check_requires_timestamp(t):
                 if m:
                     all_provides.add(m.group(1))
     for filename in sorted(t.dependencies):
-        if filename == 'build/src/internal/src/requireall.js':
+        if filename in INTERNAL_SRC or filename in EXTERNAL_SRC:
+            print filename # FIXME
             continue
-        require_linenos = {}
-        uses = set()
-        lines = open(filename).readlines()
-        for lineno, line in _strip_comments(lines):
+        for lineno, line in _strip_comments(open(filename).readlines()):
             m = re.match(r'goog.provide\(\'(.*)\'\);', line)
             if m:
                 all_provides.add(m.group(1))
-                continue
-            m = re.match(r'goog.require\(\'(.*)\'\);', line)
-            if m:
-                require_linenos[m.group(1)] = lineno
-                continue
-        ignore_linenos = require_linenos.values()
-        for lineno, line in enumerate(lines):
-            if lineno in ignore_linenos:
-                continue
-            for require in require_linenos.iterkeys():
-                if require in line:
-                    uses.add(require)
-        for require in sorted(set(require_linenos.keys()) - uses):
-            t.info('%s:%d: unused goog.require: %r' % (
-                filename, require_linenos[require], require))
-            unused_count += 1
     all_provides.discard('ol')
     all_provides.discard('ol.MapProperty')
+    # FIXME: discart all ol.test.* goog.provides
 
     class Node(object):
 
@@ -477,6 +459,7 @@ def build_check_requires_timestamp(t):
 
         def build_re(self, key):
             return re.compile('\\b' + self._build_re(key) + '\\b')
+
     root = Node()
     for provide in all_provides:
         node = root
@@ -488,21 +471,23 @@ def build_check_requires_timestamp(t):
     provide_res = [child.build_re(key)
                    for key, child in root.children.iteritems()]
     missing_count = 0
+    unused_provide_count = 0
+    unused_require_count = 0
     for filename in sorted(t.dependencies):
         if filename in INTERNAL_SRC or filename in EXTERNAL_SRC:
             continue
-        provides = set()
-        requires = set()
         uses = set()
         uses_linenos = {}
+        provide_linenos = {}
+        require_linenos = {}
         for lineno, line in _strip_comments(open(filename)):
             m = re.match(r'goog.provide\(\'(.*)\'\);', line)
             if m:
-                provides.add(m.group(1))
+                provide_linenos[m.group(1)] = lineno
                 continue
             m = re.match(r'goog.require\(\'(.*)\'\);', line)
             if m:
-                requires.add(m.group(1))
+                require_linenos[m.group(1)] = lineno
                 continue
             while True:
                 for provide_re in provide_res:
@@ -521,15 +506,32 @@ def build_check_requires_timestamp(t):
         if m:
             uses.discard('ol.renderer.Map')
             uses.discard('ol.renderer.%s.Map' % (m.group(1),))
-        missing_requires = uses - requires - provides
-        if missing_requires:
-            for missing_require in sorted(missing_requires):
-                t.info("%s:%d missing goog.require('%s')" %
-                       (filename, uses_linenos[missing_require], missing_require))
+        provides = set(provide_linenos)
+        requires = set(require_linenos)
+        missing = uses - requires - provides
+        if missing:
+            for symbol in sorted(missing):
+                t.info("%s:%d missing goog.require('%s')" % (
+                    filename, uses_linenos[symbol], symbol))
                 missing_count += 1
-    if unused_count or missing_count:
-        t.error('%d unused goog.requires, %d missing goog.requires' %
-                (unused_count, missing_count))
+        unused = (requires | provides) - uses
+        if unused:
+            for symbol in sorted(unused):
+                if symbol in provides:
+                    t.info('%s:%d: unused goog.provide: %r' % (
+                        filename, provide_linenos[symbol], symbol))
+                    unused_provide_count += 1
+                else:
+                    t.info('%s:%d: unused goog.require: %r' % (
+                        filename, require_linenos[symbol], symbol))
+                    unused_require_count += 1
+
+    if unused_provide_count or unused_require_count or missing_count:
+        t.error('%d missing goog.requires, '
+                '%d unused goog.requires, '
+                '%d unused goog.provides.' %
+                (missing_count, unused_require_count, unused_provide_count))
+    raise
     t.touch()
 
 
