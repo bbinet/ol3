@@ -66,6 +66,7 @@ ol.Overlay = function(options) {
    */
   this.element_ = goog.dom.createElement(goog.dom.TagName.DIV);
   this.element_.style.position = 'absolute';
+  this.element_.style.height = 0;
 
   /**
    * @private
